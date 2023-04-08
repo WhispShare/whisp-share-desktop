@@ -1,6 +1,21 @@
 import { Readable, Writable } from 'stream';
 import { chunkSize } from './properties';
 import { aesgcmEncrypt, aesKeyGen, aesNonceGen } from './aesgcm';
+import ProgressCallback from '@/types/ProgressCallback';
+
+let progressCallback: ProgressCallback | null = null;
+let bytesTotal = 0;
+let bytesWritten = 0;
+
+const setProgressCallback = (bytesTotalToSet: number, progressCallbackToSet?: ProgressCallback): void => {
+  if (!progressCallbackToSet) {
+    return;
+  }
+
+  bytesTotal = bytesTotalToSet;
+  progressCallback = progressCallbackToSet;
+  progressCallback(0);
+};
 
 const setStreamsInfinityMaxListeners = (input: Readable, output: Writable): void => {
   input.setMaxListeners(Infinity);
@@ -8,7 +23,13 @@ const setStreamsInfinityMaxListeners = (input: Readable, output: Writable): void
 };
 
 const writeBufferToOutput = (buffer: Buffer, output: Writable, resolve: () => void): void => {
-  output.write(buffer);
+  output.write(buffer, (): void => {
+    if (progressCallback) {
+      bytesWritten += buffer.length;
+      const percent = bytesWritten === bytesTotal ? 100 : (100 / bytesTotal) * bytesWritten;
+      progressCallback(percent);
+    }
+  });
   resolve();
 };
 
@@ -123,8 +144,10 @@ const encrypt = async (
   filename: string,
   filesize: number,
   key: Buffer,
-  id: string
+  id: string,
+  progressCallback?: ProgressCallback
 ): Promise<string> => {
+  setProgressCallback(filesize + 68 + Math.ceil(filesize / chunkSize) * 28, progressCallback);
   setStreamsInfinityMaxListeners(input, output);
 
   const nameKey = aesKeyGen();

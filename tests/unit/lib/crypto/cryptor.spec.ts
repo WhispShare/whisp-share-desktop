@@ -45,14 +45,20 @@ afterEach((): void => {
 
 describe('Cryptor', (): void => {
   test('encrypts correctly, using test vector.', async (): Promise<void> => {
+    const progressLog: number[] = [];
+    const expectedProgressLog = [0, 31, 73, 100];
+    const progressCallback = (percent: number): void => {
+      progressLog.push(Math.round(percent));
+    };
     fs.writeFileSync(testFilepathData, data);
     fs.writeFileSync(testFilepathEncrypted, Buffer.alloc(0));
     const input = fs.createReadStream(testFilepathData);
     const output = fs.createWriteStream(testFilepathEncrypted);
 
-    const actualEncryptedFilename = await encrypt(input, output, filename, dataLength, key, id);
+    const actualEncryptedFilename = await encrypt(input, output, filename, dataLength, key, id, progressCallback);
 
     assert.that(fs.readFileSync(testFilepathEncrypted)).is.equalTo(encrypted);
     assert.that(actualEncryptedFilename).is.equalTo(encryptedFilename);
+    assert.that(progressLog).is.equalTo(expectedProgressLog);
   });
 });
