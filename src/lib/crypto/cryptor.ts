@@ -2,27 +2,52 @@ import { Readable, Writable } from 'stream';
 import { chunkSize } from './properties';
 import { aesgcmEncrypt, aesKeyGen, aesNonceGen } from './aesgcm';
 
+const setStreamsInfinityMaxListeners = (input: Readable, output: Writable): void => {
+  input.setMaxListeners(Infinity);
+  output.setMaxListeners(Infinity);
+};
+
+const writeBufferToOutput = (buffer: Buffer, output: Writable, resolve: () => void): void => {
+  output.write(buffer);
+  resolve();
+};
+
+const writeBufferToOutputWhenReady = (buffer: Buffer, output: Writable): Promise<void> => {
+  return new Promise((resolve) => {
+    if (output.writableNeedDrain) {
+      output.once('drain', (): void => {
+        writeBufferToOutput(buffer, output, resolve);
+      });
+    } else {
+      writeBufferToOutput(buffer, output, resolve);
+    }
+  });
+};
+
+const endStreams = (input: Readable, output: Writable, resolve: () => void): void => {
+  output.end((): void => {
+    input.destroy();
+    output.destroy();
+    resolve();
+  });
+};
+
+const endStreamsWhenReady = (input: Readable, output: Writable): Promise<void> => {
+  return new Promise((resolve) => {
+    if (output.writableNeedDrain) {
+      output.once('drain', (): void => {
+        endStreams(input, output, resolve);
+      });
+    } else {
+      endStreams(input, output, resolve);
+    }
+  });
+};
+
 const numberTo4ByteBuffer = (num: number): Buffer => {
   const buffer = Buffer.alloc(4);
   buffer.writeUint32BE(num);
   return buffer;
-};
-
-const writeBufferToOutput = (buffer: Buffer, output: Writable): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    output.write(buffer, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
-};
-
-const endOutput = (output: Writable): Promise<void> => {
-  return new Promise((resolve) => {
-    output.end((): void => {
-      resolve();
-    });
-  });
 };
 
 const encryptFilename = (filename: string, key: Buffer, id: string): string => {
@@ -84,12 +109,12 @@ const encryptPayload = async (
   do {
     const chunk = await readNextPlaintextChunk(input, pos, filesize);
     const encryptedChunk = encryptChunk(chunk, key, encryptedFilename, index);
-    await writeBufferToOutput(encryptedChunk, output);
+    await writeBufferToOutputWhenReady(encryptedChunk, output);
     index++;
     pos += chunk.length;
   } while (pos < filesize);
 
-  await endOutput(output);
+  await endStreamsWhenReady(input, output);
 };
 
 const encrypt = async (
@@ -100,12 +125,14 @@ const encrypt = async (
   key: Buffer,
   id: string
 ): Promise<string> => {
+  setStreamsInfinityMaxListeners(input, output);
+
   const nameKey = aesKeyGen();
   const contentKey = aesKeyGen();
   const encryptedFilename = encryptFilename(filename, nameKey, id);
 
   const encryptedHeader = encryptHeader(contentKey, key, filesize, encryptedFilename);
-  await writeBufferToOutput(encryptedHeader, output);
+  await writeBufferToOutputWhenReady(encryptedHeader, output);
 
   await encryptPayload(input, output, contentKey, encryptedFilename, filesize);
 
