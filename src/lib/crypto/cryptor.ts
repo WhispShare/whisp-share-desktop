@@ -71,21 +71,28 @@ const numberTo4ByteBuffer = (num: number): Buffer => {
   return buffer;
 };
 
-const encryptFilename = (filename: string, key: Buffer, id: string): string => {
+const encryptFilename = async (filename: string, key: Buffer, id: string, output: Writable): Promise<string> => {
   const data = Buffer.from(filename, 'utf8');
   const nonce = aesNonceGen();
   const additionalData = Buffer.from(id, 'utf8');
-  const encryptedFilename = aesgcmEncrypt(data, key, nonce, additionalData);
-  return Buffer.concat([nonce, encryptedFilename]).toString('base64url');
+  const [ciphertext, authTag] = aesgcmEncrypt(data, key, nonce, additionalData);
+  await writeBufferToOutputWhenReady(Buffer.concat([nonce, authTag]), output);
+  return ciphertext.toString('base64url');
 };
 
-const encryptHeader = (contentKey: Buffer, superKey: Buffer, filesize: number, encryptedFilename: string): Buffer => {
+const encryptHeader = async (
+  contentKey: Buffer,
+  superKey: Buffer,
+  filesize: number,
+  encryptedFilename: string,
+  output: Writable
+): Promise<void> => {
   const chunks = Math.ceil(filesize / chunkSize);
   const header = Buffer.concat([Buffer.from('FF'.repeat(8), 'hex'), contentKey]);
   const nonce = aesNonceGen();
   const additionalData = Buffer.concat([Buffer.from(encryptedFilename, 'base64url'), numberTo4ByteBuffer(chunks)]);
-  const encryptedHeader = aesgcmEncrypt(header, superKey, nonce, additionalData);
-  return Buffer.concat([nonce, encryptedHeader]);
+  const [ciphertext, authTag] = aesgcmEncrypt(header, superKey, nonce, additionalData);
+  await writeBufferToOutputWhenReady(Buffer.concat([nonce, ciphertext, authTag]), output);
 };
 
 const readNextPlaintextChunk = (input: Readable, pos: number, filesize: number): Promise<Buffer> => {
@@ -113,8 +120,8 @@ const readNextPlaintextChunk = (input: Readable, pos: number, filesize: number):
 const encryptChunk = (chunk: Buffer, key: Buffer, encryptedFilename: string, index: number): Buffer => {
   const nonce = aesNonceGen();
   const additionalData = Buffer.concat([Buffer.from(encryptedFilename, 'base64url'), numberTo4ByteBuffer(index)]);
-  const encryptedchunk = aesgcmEncrypt(chunk, key, nonce, additionalData);
-  return Buffer.concat([nonce, encryptedchunk]);
+  const [ciphertext, authTag] = aesgcmEncrypt(chunk, key, nonce, additionalData);
+  return Buffer.concat([nonce, ciphertext, authTag]);
 };
 
 const encryptPayload = async (
@@ -147,16 +154,18 @@ const encrypt = async (
   id: string,
   progressCallback?: ProgressCallback
 ): Promise<string> => {
-  setProgressCallback(filesize + 68 + Math.ceil(filesize / chunkSize) * 28, progressCallback);
+  const headerSize = 68;
+  const nonceAndAuthTagSize = 28;
+  setProgressCallback(
+    filesize + headerSize + nonceAndAuthTagSize + Math.ceil(filesize / chunkSize) * nonceAndAuthTagSize,
+    progressCallback
+  );
   setStreamsInfinityMaxListeners(input, output);
 
   const nameKey = aesKeyGen();
   const contentKey = aesKeyGen();
-  const encryptedFilename = encryptFilename(filename, nameKey, id);
-
-  const encryptedHeader = encryptHeader(contentKey, key, filesize, encryptedFilename);
-  await writeBufferToOutputWhenReady(encryptedHeader, output);
-
+  const encryptedFilename = await encryptFilename(filename, nameKey, id, output);
+  await encryptHeader(contentKey, key, filesize, encryptedFilename, output);
   await encryptPayload(input, output, contentKey, encryptedFilename, filesize);
 
   return encryptedFilename;

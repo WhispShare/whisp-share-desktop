@@ -25,12 +25,12 @@ const dataLength = 96;
 const key = Buffer.from(new Uint8Array(32).fill(32));
 const data = Buffer.from(new Uint8Array(dataLength));
 const encrypted = Buffer.from(
-  'DAwMDAwMDAwMDAwMkNe1gS6RkABghQk9Vox2Q+VTh5YFbz8x0Fi1HIWCjzGsO3QWJeJiyHg1bXUGgbGXvjYpEk8jylcMDAwMDAwMDAwMDAxvKEp+0W5v/0ClKR12rFZjxXOntiVPHxHweJU8paKvEYwbVDYFwkLoxBSsk5wrWf7KjGEQ3sukwf1ESgqi4n0r1z+b+2MV8LNwdT5yKZ77EwwMDAwMDAwMDAwMDG8oSn7Rbm//QKUpHXasVmPFc6e2JU8fEfB4lTyloq8RaJd2SjR7UCNbu8MKIEUkQw==',
+  'DAwMDAwMDAwMDAwM9zxtT/ILrh+KxXr9vc7dhQwMDAwMDAwMDAwMDJDXtYEukZAAYIUJPVaMdkPlU4eWBW8/MdBYtRyFgo8xrDt0FiXiYsjGCd0FAZh025he0S5SkoZrDAwMDAwMDAwMDAwMbyhKftFub/9ApSkddqxWY8Vzp7YlTx8R8HiVPKWirxGMG1Q2BcJC6MQUrJOcK1n+yoxhEN7LpMH9REoKouJ9K4+TKWFjyHh+/YklAanZaRcMDAwMDAwMDAwMDAxvKEp+0W5v/0ClKR12rFZjxXOntiVPHxHweJU8paKvEaR6kpwDTezdZ3mxZrSRpds=',
   'base64'
 );
 const id = 'id';
 const filename = 'test';
-const encryptedFilename = 'DAwMDAwMDAwMDAwMG005Cvc8bU_yC64fisV6_b3O3YU';
+const encryptedFilename = 'G005Cg';
 
 const testFilepathData = './data';
 const testFilepathEncrypted = './encrypted';
@@ -46,7 +46,7 @@ afterEach((): void => {
 describe('Cryptor', (): void => {
   test('encrypts correctly, using test vector.', async (): Promise<void> => {
     const progressLog: number[] = [];
-    const expectedProgressLog = [0, 31, 73, 100];
+    const expectedProgressLog = [0, 11, 39, 76, 100];
     const progressCallback = (percent: number): void => {
       progressLog.push(Math.round(percent));
     };

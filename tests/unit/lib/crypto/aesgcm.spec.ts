@@ -24,60 +24,74 @@ describe('AES-GCM', (): void => {
       'hex'
     ),
     additionalData: Buffer.from('feedfacedeadbeeffeedfacedeadbeefabaddad2', 'hex'),
-    cipherAndTag: Buffer.from(
-      '522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f66276fc6ece0f4e1768cddf8853bb2d551b',
+    ciphertext: Buffer.from(
+      '522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662',
       'hex'
-    )
+    ),
+    authTag: Buffer.from('76fc6ece0f4e1768cddf8853bb2d551b', 'hex')
   };
 
   test('encrypts correctly.', async (): Promise<void> => {
-    const { key, nonce, data, additionalData, cipherAndTag } = testVector;
+    const { key, nonce, data, additionalData, ciphertext, authTag } = testVector;
 
-    const acualCipherAndTag = aesgcmEncrypt(data, key, nonce, additionalData);
+    const [actualCiphertext, actualAuthTag] = aesgcmEncrypt(data, key, nonce, additionalData);
 
-    assert.that(acualCipherAndTag).is.equalTo(cipherAndTag);
+    assert.that(actualCiphertext).is.equalTo(ciphertext);
+    assert.that(actualAuthTag).is.equalTo(authTag);
   });
 
   test('decrypts correctly.', async (): Promise<void> => {
-    const { key, nonce, data, additionalData, cipherAndTag } = testVector;
+    const { key, nonce, data, additionalData, ciphertext, authTag } = testVector;
 
-    const acualDecrypted = aesgcmDecrypt(cipherAndTag, key, nonce, additionalData);
+    const acualDecrypted = aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
 
     assert.that(acualDecrypted).is.equalTo(data);
   });
 
-  test('fails to decrypt due to invalid cipherText.', async (): Promise<void> => {
-    const { key, nonce, additionalData, cipherAndTag } = testVector;
+  test('fails to decrypt due to invalid ciphertext.', async (): Promise<void> => {
+    const { key, nonce, additionalData, ciphertext, authTag } = testVector;
 
-    cipherAndTag[0] = cipherAndTag[0] === 0 ? 1 : 0;
+    ciphertext[0] = ciphertext[0] === 0 ? 1 : 0;
 
     assert
       .that((): void => {
-        aesgcmDecrypt(cipherAndTag, key, nonce, additionalData);
+        aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
       })
       .is.throwing('Unsupported state or unable to authenticate data');
   });
 
   test('fails to decrypt due to invalid additionalData.', async (): Promise<void> => {
-    const { key, nonce, additionalData, cipherAndTag } = testVector;
+    const { key, nonce, additionalData, ciphertext, authTag } = testVector;
 
     additionalData[0] = additionalData[0] === 0 ? 1 : 0;
 
     assert
       .that((): void => {
-        aesgcmDecrypt(cipherAndTag, key, nonce, additionalData);
+        aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
       })
       .is.throwing('Unsupported state or unable to authenticate data');
   });
 
   test('fails to decrypt due to invalid key.', async (): Promise<void> => {
-    const { key, nonce, additionalData, cipherAndTag } = testVector;
+    const { key, nonce, additionalData, ciphertext, authTag } = testVector;
 
     key[0] = key[0] === 0 ? 1 : 0;
 
     assert
       .that((): void => {
-        aesgcmDecrypt(cipherAndTag, key, nonce, additionalData);
+        aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
+      })
+      .is.throwing('Unsupported state or unable to authenticate data');
+  });
+
+  test('fails to decrypt due to invalid authTag.', async (): Promise<void> => {
+    const { key, nonce, additionalData, ciphertext, authTag } = testVector;
+
+    authTag[0] = authTag[0] === 0 ? 1 : 0;
+
+    assert
+      .that((): void => {
+        aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
       })
       .is.throwing('Unsupported state or unable to authenticate data');
   });
