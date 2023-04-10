@@ -1,4 +1,5 @@
 import { aesgcmEncrypt, aesgcmDecrypt, aesKeyGen, aesNonceGen } from '@/lib/crypto/aesgcm';
+import { key, nonce, data, additionalData, ciphertext, authTag } from './aesgcmTestvector';
 import { assert } from 'assertthat';
 
 jest.mock('crypto', () => {
@@ -13,27 +14,10 @@ jest.mock('crypto', () => {
   };
 });
 
+const authErrorMessage = 'Unsupported state or unable to authenticate data';
+
 describe('AES-GCM', (): void => {
-  // Official test vector from https://luca-giuzzi.unibs.it/corsi/Support/papers-cryptography/gcm-spec.pdf
-  // Section B; Test Case 16
-  const testVector = {
-    key: Buffer.from('feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308', 'hex'),
-    nonce: Buffer.from('cafebabefacedbaddecaf888', 'hex'),
-    data: Buffer.from(
-      'd9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39',
-      'hex'
-    ),
-    additionalData: Buffer.from('feedfacedeadbeeffeedfacedeadbeefabaddad2', 'hex'),
-    ciphertext: Buffer.from(
-      '522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662',
-      'hex'
-    ),
-    authTag: Buffer.from('76fc6ece0f4e1768cddf8853bb2d551b', 'hex')
-  };
-
   test('encrypts correctly.', async (): Promise<void> => {
-    const { key, nonce, data, additionalData, ciphertext, authTag } = testVector;
-
     const [actualCiphertext, actualAuthTag] = aesgcmEncrypt(data, key, nonce, additionalData);
 
     assert.that(actualCiphertext).is.equalTo(ciphertext);
@@ -41,59 +25,9 @@ describe('AES-GCM', (): void => {
   });
 
   test('decrypts correctly.', async (): Promise<void> => {
-    const { key, nonce, data, additionalData, ciphertext, authTag } = testVector;
-
     const acualDecrypted = aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
 
     assert.that(acualDecrypted).is.equalTo(data);
-  });
-
-  test('fails to decrypt due to invalid ciphertext.', async (): Promise<void> => {
-    const { key, nonce, additionalData, ciphertext, authTag } = testVector;
-
-    ciphertext[0] = ciphertext[0] === 0 ? 1 : 0;
-
-    assert
-      .that((): void => {
-        aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
-      })
-      .is.throwing('Unsupported state or unable to authenticate data');
-  });
-
-  test('fails to decrypt due to invalid additionalData.', async (): Promise<void> => {
-    const { key, nonce, additionalData, ciphertext, authTag } = testVector;
-
-    additionalData[0] = additionalData[0] === 0 ? 1 : 0;
-
-    assert
-      .that((): void => {
-        aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
-      })
-      .is.throwing('Unsupported state or unable to authenticate data');
-  });
-
-  test('fails to decrypt due to invalid key.', async (): Promise<void> => {
-    const { key, nonce, additionalData, ciphertext, authTag } = testVector;
-
-    key[0] = key[0] === 0 ? 1 : 0;
-
-    assert
-      .that((): void => {
-        aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
-      })
-      .is.throwing('Unsupported state or unable to authenticate data');
-  });
-
-  test('fails to decrypt due to invalid authTag.', async (): Promise<void> => {
-    const { key, nonce, additionalData, ciphertext, authTag } = testVector;
-
-    authTag[0] = authTag[0] === 0 ? 1 : 0;
-
-    assert
-      .that((): void => {
-        aesgcmDecrypt(ciphertext, authTag, key, nonce, additionalData);
-      })
-      .is.throwing('Unsupported state or unable to authenticate data');
   });
 
   test('returns 32 bytes buffer, all bytes 0010000.', async (): Promise<void> => {
@@ -106,5 +40,64 @@ describe('AES-GCM', (): void => {
     const bytes = aesNonceGen();
 
     assert.that(bytes).is.equalTo(Buffer.from('0C'.repeat(12), 'hex'));
+  });
+
+  describe('fails decryption due to invalid...', (): void => {
+    const tamper = (source: Buffer, bytePos = 0): Buffer => {
+      const tampered = Buffer.concat([source]);
+      // flip last bit of bytePos byte
+      tampered[bytePos] = tampered[bytePos] ^ 1;
+      return tampered;
+    };
+
+    test('...ciphertext.', async (): Promise<void> => {
+      const tampered = tamper(ciphertext);
+
+      assert
+        .that((): void => {
+          aesgcmDecrypt(tampered, authTag, key, nonce, additionalData);
+        })
+        .is.throwing(authErrorMessage);
+    });
+
+    test('...nonce.', async (): Promise<void> => {
+      const tampered = tamper(nonce);
+
+      assert
+        .that((): void => {
+          aesgcmDecrypt(ciphertext, authTag, key, tampered, additionalData);
+        })
+        .is.throwing(authErrorMessage);
+    });
+
+    test('...additionalData.', async (): Promise<void> => {
+      const tampered = tamper(additionalData);
+
+      assert
+        .that((): void => {
+          aesgcmDecrypt(ciphertext, authTag, key, nonce, tampered);
+        })
+        .is.throwing(authErrorMessage);
+    });
+
+    test('...key.', async (): Promise<void> => {
+      const tampered = tamper(key);
+
+      assert
+        .that((): void => {
+          aesgcmDecrypt(ciphertext, authTag, tampered, nonce, additionalData);
+        })
+        .is.throwing(authErrorMessage);
+    });
+
+    test('...authTag.', async (): Promise<void> => {
+      const tampered = tamper(authTag);
+
+      assert
+        .that((): void => {
+          aesgcmDecrypt(ciphertext, tampered, key, nonce, additionalData);
+        })
+        .is.throwing(authErrorMessage);
+    });
   });
 });
